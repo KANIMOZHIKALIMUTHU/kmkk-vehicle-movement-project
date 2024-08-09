@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import axios from 'axios'; // Import Axios
 import './App.css'; // Import the CSS file
 
 function App() {
@@ -6,49 +7,28 @@ function App() {
   const [mapType] = useState('roadmap');
   const [connectionType, setConnectionType] = useState('wireless');
   const [isMinimized, setIsMinimized] = useState(false);
-  const [customRange, setCustomRange] = useState({ start: '', end: '' });
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(25); // Playback speed in milliseconds
-  const [animationInterval, setAnimationInterval] = useState(null);
+  const [pathData, setPathData] = useState([]);
+  const animationInterval = useRef(null);
+  const carMarkerRef = useRef(null);
 
-  const getPath = (option) => {
-    const paths = {
-      today: [
-        { lat: 37.7749, lng: -122.4194 },
-        { lat: 37.7780, lng: -122.4150 },
-        { lat: 37.7799, lng: -122.4100 },
-      ],
-      yesterday: [
-        { lat: 37.7740, lng: -122.4190 },
-        { lat: 37.7770, lng: -122.4140 },
-        { lat: 37.7790, lng: -122.4090 },
-      ],
-      this_week: [
-        { lat: 37.7749, lng: -122.4194 },
-        { lat: 37.7700, lng: -122.4300 },
-        { lat: 37.7800, lng: -122.4200 },
-      ],
-      previous_week: [
-        { lat: 37.7600, lng: -122.4300 },
-        { lat: 37.7650, lng: -122.4400 },
-        { lat: 37.7700, lng: -122.4500 },
-      ],
-      this_month: [
-        { lat: 37.7700, lng: -122.4200 },
-        { lat: 37.7600, lng: -122.4300 },
-        { lat: 37.7500, lng: -122.4400 },
-      ],
-      previous_month: [
-        { lat: 37.7500, lng: -122.4500 },
-        { lat: 37.7400, lng: -122.4600 },
-        { lat: 37.7300, lng: -122.4700 },
-      ],
-      custom: [
-        // Use a default or empty path for custom until a range is specified
-      ],
+  useEffect(() => {
+    const fetchVehicleData = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/api/vehicle-data');
+        if (Array.isArray(response.data)) {
+          setPathData(response.data);
+        } else {
+          console.error('Unexpected data format:', response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching vehicle data:', error);
+      }
     };
-    return paths[option];
-  };
+
+    fetchVehicleData();
+  }, []);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -59,6 +39,15 @@ function App() {
       initMap();
     };
     document.head.appendChild(script);
+
+    function getPath(option) {
+      if (Array.isArray(pathData)) {
+        const pathEntry = pathData.find(entry => entry.date === option);
+        return pathEntry ? pathEntry.path : [];
+      }
+      console.error('pathData is not an array:', pathData);
+      return [];
+    }
 
     function initMap() {
       const mapOptions = {
@@ -94,7 +83,7 @@ function App() {
         },
       });
 
-      startMarker.setMap(map)
+      startMarker.setMap(map);
 
       const endMarker = new window.google.maps.Marker({
         position: selectedPath[selectedPath.length - 1],
@@ -115,10 +104,11 @@ function App() {
         position: selectedPath[0],
         map: map,
         icon: {
-          url: 'vehicle-icon.png', // URL to your car icon image
+          url: "vehicle-icon.png",
           scaledSize: new window.google.maps.Size(20, 20),
         },
       });
+      carMarkerRef.current = carMarker;
 
       function moveCar() {
         let step = 0;
@@ -143,26 +133,30 @@ function App() {
           carMarker.setPosition(nextPosition);
 
           if (step < numSteps) {
-            setAnimationInterval(setTimeout(moveMarker, playbackSpeed));
+            animationInterval.current = setTimeout(moveMarker, playbackSpeed);
           } else {
-            clearInterval(animationInterval);
-            setAnimationInterval(null);
+            clearInterval(animationInterval.current);
+            animationInterval.current = null;
           }
         }
 
         moveMarker();
       }
-
-      moveCar();
+      // Start animation if playing
+      if (isPlaying) {
+        moveCar();
+      }
     }
 
     return () => {
-      if (animationInterval) {
-        clearInterval(animationInterval);
+      if (animationInterval.current) {
+        clearInterval(animationInterval.current);
       }
+
     };
-  }, [selectedOption, mapType, isPlaying, playbackSpeed, customRange, animationInterval]
-);
+  }, [selectedOption, mapType, isPlaying, playbackSpeed, pathData, animationInterval]);
+
+
 
   return (
     <div className="app-container">
@@ -186,7 +180,7 @@ function App() {
           <label>
             Time Period:
             <select value={selectedOption} onChange={(e) => setSelectedOption(e.target.value)}>
-              <option value="today">Today</option>
+            <option value="today">Today</option>
               <option value="yesterday">Yesterday</option>
               <option value="this_week">This Week</option>
               <option value="previous_week">Previous Week</option>
@@ -195,23 +189,8 @@ function App() {
               <option value="custom">Custom</option>
             </select>
           </label>
-          {selectedOption === 'custom' && (
-            <div>
-              <label>
-                Start Date:
-                <input type="date" value={customRange.start} onChange={(e) => setCustomRange({ ...customRange, start: e.target.value })} />
-              </label>
-              <label>
-                End Date:
-                <input type="date" value={customRange.end} onChange={(e) => setCustomRange({ ...customRange, end: e.target.value })} />
-              </label>
-            </div>
-          )}
-          <button onClick={() => setSelectedOption(selectedOption)}>
-            Show
-          </button>
           <div className="player-controls">
-            <button className="play-btn" onClick={() => setIsPlaying(!isPlaying)}>
+          <button className="play-btn" onClick={() => setIsPlaying(!isPlaying)}>
               {isPlaying ? '⏸️' : '▶️'}
             </button>
             <label>
