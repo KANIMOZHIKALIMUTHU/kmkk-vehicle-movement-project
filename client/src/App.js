@@ -16,7 +16,7 @@ function App() {
   useEffect(() => {
     const fetchVehicleData = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/vehicle-data');
+        const response = await axios.get('https://kmkk-vehicle-movement-project.onrender.com/api/vehicle-data');
         if (Array.isArray(response.data)) {
           setPathData(response.data);
         } else {
